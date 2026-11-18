@@ -1,0 +1,2599 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GlassLine 4.0 — Digital Twin & SCADA Simulator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter, Noto Sans Thai, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans Thai"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            scada: {
+              bg: '#070b14',
+              panel: '#0e1525',
+              card: '#131c31',
+              border: '#1f2d4a',
+              accent: '#f97316',
+              cyan: '#06b6d4',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom SCADA Industrial Styling & Scrollbars */
+    body {
+      background-color: #070b14;
+      color: #e2e8f0;
+      font-family: 'Noto Sans Thai', 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Custom Range Sliders */
+    input[type="range"].scada-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: #1e293b;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"].scada-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #f97316;
+      border: 2px solid #fff7ed;
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.7);
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+    input[type="range"].scada-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    input[type="range"].scada-slider.cyan-slider::-webkit-slider-thumb {
+      background: #06b6d4;
+      border-color: #ecfeff;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.7);
+    }
+
+    /* Subtle grid background for SCADA viewport */
+    .scada-grid-bg {
+      background-image: 
+        linear-gradient(to right, rgba(30, 41, 59, 0.35) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(30, 41, 59, 0.35) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    /* Blinking status LED */
+    @keyframes pulse-led {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .led-blink {
+      animation: pulse-led 1.4s infinite ease-in-out;
+    }
+
+    /* Custom thin scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b1120;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #283858;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3b5280;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-orange-500/30 selection:text-orange-200">
+
+  <!-- =====================================================================
+       TOP SCADA NAVIGATION & SYSTEM CONTROL BAR
+       ===================================================================== -->
+  <header class="sticky top-0 z-30 bg-[#0b1120]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-6 py-2.5">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand & Digital Twin Status -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-cyan-500 p-[1.5px] shadow-lg shadow-orange-500/20">
+          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+            <!-- Glass Melting Icon SVG -->
+            <svg class="w-6 h-6 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3h8l1 6a5 5 0 0 1-5 5 5 5 0 0 1-5-5l1-6Z" />
+              <path d="M12 14v7" />
+              <path d="M8 21h8" />
+              <path d="M7.5 8h9" class="text-cyan-400" stroke="currentColor" />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">
+              GLASS-LINE 04 <span class="text-orange-400 font-mono text-sm">DIGITAL TWIN</span>
+            </h1>
+            <span id="systemStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span id="systemStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 led-blink"></span>
+              <span id="systemStatusText">NORMAL OPERATION</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">
+            ระบบจำลองสายการผลิตแก้วอุตสาหกรรม (Soda-Lime Glass Process Engineering SCADA)
+          </p>
+        </div>
+      </div>
+
+      <!-- Playback, Speed & Guided Tour Controls -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Guided Tour Toggle -->
+        <button id="btnGuidedTour" onclick="toggleGuidedTour()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 transition active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="btnGuidedTourLabel">แนะนำทีละขั้นตอน (Tour)</span>
+        </button>
+
+        <!-- Play / Pause Button -->
+        <button id="btnPlayPause" onclick="togglePlayPause()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-600/20 transition active:scale-95">
+          <svg id="iconPause" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+          <svg id="iconPlay" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+          </svg>
+          <span id="playPauseLabel">หยุดชั่วคราว</span>
+        </button>
+
+        <!-- Simulation Speed Toggle (1x / 2x) -->
+        <div class="inline-flex rounded-lg bg-slate-900 p-1 border border-slate-800">
+          <button id="speed1x" onclick="setSimSpeed(1)" class="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-slate-700 text-white transition">1x</button>
+          <button id="speed2x" onclick="setSimSpeed(2)" class="px-2.5 py-1 rounded-md text-xs font-mono font-bold text-slate-400 hover:text-white transition">2x</button>
+        </div>
+
+        <!-- Reset All Button -->
+        <button onclick="resetSimulation()" title="รีเซ็ตค่าทั้งหมดกลับสู่มาตรฐาน" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =====================================================================
+       ALARM / NOTIFICATION BANNER (Dynamic Toast Area)
+       ===================================================================== -->
+  <div id="alarmBanner" class="hidden bg-red-950/90 border-b border-red-500/50 px-4 py-2 text-xs sm:text-sm text-red-200">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-xs animate-pulse">ALARM</span>
+        <span id="alarmMessage" class="font-medium">ตรวจพบความผิดปกติในสายการผลิต</span>
+      </div>
+      <button onclick="clearFaults()" class="px-3 py-1 rounded bg-red-600/40 hover:bg-red-600/60 border border-red-400/50 text-white text-xs font-semibold transition">
+        แก้ไขและรีเซ็ตระบบสาธารณูปโภค
+      </button>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MAIN DASHBOARD CONTAINER
+       ===================================================================== -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
+
+    <!-- 1. LIVE KPI TELEMETRY STRIP -->
+    <section aria-label="Live KPI Telemetry" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <!-- KPI 1: Pack-to-Melt Efficiency -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Pack-to-Melt Eff.</span>
+          <span class="font-mono text-[11px] text-emerald-400">TARGET ≥92%</span>
+        </div>
+        <div class="mt-1.5 flex items-baseline justify-between">
+          <span id="kpiEfficiency" class="text-2xl font-mono font-bold text-emerald-400">94.2%</span>
+          <span id="kpiEffTrend" class="text-xs font-mono text-emerald-400/80">OPTIMAL</span>
+        </div>
+        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+          <div id="barEfficiency" class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: 94.2%"></div>
+        </div>
+      </div>
+
+      <!-- KPI 2: Good vs Reject Output -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>ของดี / ของเสีย (pcs/min)</span>
+          <span class="font-mono text-[11px] text-cyan-400">LIVE</span>
+        </div>
+        <div class="mt-1.5 flex items-baseline gap-2">
+          <span id="kpiGoodRate" class="text-xl font-mono font-bold text-white">42.4</span>
+          <span class="text-slate-500 text-xs">/</span>
+          <span id="kpiRejectRate" class="text-base font-mono font-bold text-rose-400">2.6</span>
+          <span class="text-[11px] text-slate-400 ml-auto">pcs/m</span>
+        </div>
+        <div class="flex gap-1 h-1.5 mt-2 rounded-full overflow-hidden bg-slate-800">
+          <div id="barGoodRatio" class="bg-cyan-400 h-full transition-all duration-300" style="width: 94%"></div>
+          <div id="barRejectRatio" class="bg-rose-500 h-full transition-all duration-300" style="width: 6%"></div>
+        </div>
+      </div>
+
+      <!-- KPI 3: Glass Viscosity -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>ความหนืดน้ำแก้ว (Viscosity)</span>
+          <span class="font-mono text-[11px] text-orange-400">GOB FEED</span>
+        </div>
+        <div class="mt-1.5 flex items-baseline justify-between">
+          <span id="kpiViscosity" class="text-2xl font-mono font-bold text-orange-400">3.12</span>
+          <span class="text-xs font-mono text-slate-400">log₁₀ η (Poise)</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1.5 truncate" id="kpiViscosityNote">
+          ความหนืดเหมาะสมต่อการตัด Gob
+        </div>
+      </div>
+
+      <!-- KPI 4: Residual Thermal Stress -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>ความเค้นสะสม (Stress)</span>
+          <span class="font-mono text-[11px] text-cyan-400">&lt;50 nm/cm</span>
+        </div>
+        <div class="mt-1.5 flex items-baseline justify-between">
+          <span id="kpiStress" class="text-2xl font-mono font-bold text-cyan-400">24</span>
+          <span class="text-xs font-mono text-slate-400">nm/cm</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1.5 truncate" id="kpiStressNote">
+          โครงสร้างโมเลกุลคลายตัวสมบูรณ์
+        </div>
+      </div>
+
+      <!-- KPI 5: Specific Energy Consumption -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>พลังงานจำเพาะ (Energy)</span>
+          <span id="kpiCo2Save" class="font-mono text-[11px] text-emerald-400">-7.5% CO₂</span>
+        </div>
+        <div class="mt-1.5 flex items-baseline justify-between">
+          <span id="kpiEnergy" class="text-2xl font-mono font-bold text-amber-400">4.35</span>
+          <span class="text-xs font-mono text-slate-400">GJ / ton</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1.5 truncate" id="kpiEnergyNote">
+          Cullet 25% ช่วยลดเชื้อเพลิงเตาหลอม
+        </div>
+      </div>
+
+      <!-- KPI 6: Utilities Status -->
+      <div class="bg-[#0e1525] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>สาธารณูปโภค (Utilities)</span>
+          <span id="kpiUtilStatus" class="font-mono text-[11px] text-emerald-400">NOMINAL</span>
+        </div>
+        <div class="mt-1.5 space-y-1 text-[11px] font-mono">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">GAS:</span>
+            <span id="utilGasVal" class="text-amber-300">2.4 bar (OK)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">COOL AIR:</span>
+            <span id="utilCoolAirVal" class="text-cyan-300">100% (OK)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">COMP AIR:</span>
+            <span id="utilCompAirVal" class="text-emerald-300">6.5 bar</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. INTERACTIVE PROCESS FLOW VIEWPORT (CANVAS + STATION BAR) -->
+    <section class="bg-[#0e1525] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      <!-- Viewport Toolbar -->
+      <div class="px-4 py-2.5 bg-[#0b1120] border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+          <h2 class="text-xs sm:text-sm font-semibold text-slate-200">
+            แผนผังสายการผลิตแบบเรียลไทม์ (Interactive Process Flow & Cullet Loop)
+          </h2>
+          <span class="hidden md:inline-block text-xs text-slate-500">— คลิกที่สถานีใดก็ได้เพื่อดูหลักการทำงานและจุดบำรุงรักษา</span>
+        </div>
+
+        <!-- Quick Forming Machine Mode Switcher -->
+        <div class="flex items-center gap-1.5 text-xs">
+          <span class="text-slate-400 hidden sm:inline">เครื่องขึ้นรูป:</span>
+          <div class="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-700/80">
+            <button onclick="setFormingMode('h28')" id="modeBtn-h28" class="px-2.5 py-1 rounded-md font-medium bg-orange-600 text-white transition">
+              H-28 Paste Mold
+            </button>
+            <button onclick="setFormingMode('press')" id="modeBtn-press" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition">
+              Rotary Press
+            </button>
+            <button onclick="setFormingMode('is')" id="modeBtn-is" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition">
+              IS Machine
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guided Tour Banner (Shown when Guided Tour is active) -->
+      <div id="guidedTourBar" class="hidden bg-gradient-to-r from-cyan-950/90 via-slate-900 to-cyan-950/90 border-b border-cyan-500/40 px-4 py-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span id="tourStepBadge" class="px-2.5 py-1 rounded-md bg-cyan-500 text-slate-950 font-mono font-bold text-xs">
+              STEP 1 / 7
+            </span>
+            <div>
+              <h3 id="tourStepTitle" class="text-sm font-bold text-cyan-200">สถานีที่ 1: Batch House</h3>
+              <p id="tourStepDesc" class="text-xs text-slate-300">ชั่งตวงและผสมวัตถุดิบหลักให้เป็นเนื้อเดียวกันก่อนป้อนเข้าเตาหลอม</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="prevTourStep()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-600 transition">
+              ← ก่อนหน้า
+            </button>
+            <button onclick="nextTourStep()" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition">
+              ถัดไป →
+            </button>
+            <button onclick="toggleGuidedTour()" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs border border-slate-700">
+              ปิดทัวร์
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable/Responsive Canvas Container -->
+      <div id="canvasScrollWrapper" class="relative w-full overflow-x-auto scada-grid-bg select-none">
+        <div class="min-w-[1050px] w-full h-[430px] sm:h-[470px] relative">
+          <canvas id="processCanvas" class="w-full h-full block cursor-pointer"></canvas>
+        </div>
+      </div>
+
+      <!-- Station Selector Pills (Easy Touch/Mobile Navigation) -->
+      <div class="px-3 py-2.5 bg-[#0b1120] border-t border-slate-800 flex items-center gap-1.5 overflow-x-auto">
+        <span class="text-[11px] font-mono text-slate-500 uppercase mr-1 shrink-0">STATIONS:</span>
+        <button onclick="selectStation(0)" id="pill-0" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          1. Batch House
+        </button>
+        <button onclick="selectStation(1)" id="pill-1" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          2. Melting Furnace
+        </button>
+        <button onclick="selectStation(2)" id="pill-2" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          3. Gob Feeder
+        </button>
+        <button onclick="selectStation(3)" id="pill-3" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          4. Forming Machine
+        </button>
+        <button onclick="selectStation(4)" id="pill-4" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          5. Annealing Lehr
+        </button>
+        <button onclick="selectStation(5)" id="pill-5" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          6. Surface Coating
+        </button>
+        <button onclick="selectStation(6)" id="pill-6" class="station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          7. Cold-End QC & Cullet
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. BOTTOM WORKSPACE: ENGINEERING CONTROLS (LEFT) + LIVE ANALYTICS & INSPECTOR (RIGHT) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+      <!-- LEFT COLUMN (5 cols): Interactive Process Control Panel & Utility Faults -->
+      <div class="lg:col-span-5 space-y-4">
+        <!-- Engineering Parameters Card -->
+        <div class="bg-[#0e1525] border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              <h3 class="text-sm font-bold text-white">แผงควบคุมพารามิเตอร์ทางวิศวกรรม</h3>
+            </div>
+            <span class="text-[11px] font-mono text-slate-400">PROCESS CONTROL</span>
+          </div>
+
+          <div class="space-y-4">
+            <!-- Control 1: Furnace Temperature -->
+            <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center mb-1">
+                <label for="sliderTemp" class="text-xs font-semibold text-slate-200">
+                  1. อุณหภูมิเตาหลอม (Furnace Temp)
+                </label>
+                <span id="valFurnaceTemp" class="font-mono text-sm font-bold text-orange-400">1,520 °C</span>
+              </div>
+              <input id="sliderTemp" type="range" min="1400" max="1600" step="5" value="1520" class="w-full scada-slider" oninput="updateControls()" />
+              <div class="flex justify-between text-[10px] font-mono text-slate-500 mt-1">
+                <span>1,400°C (หนืด/ฟองสูง)</span>
+                <span class="text-emerald-400">1,510–1,540°C (เหมาะสม)</span>
+                <span>1,600°C (เปลืองพลังงาน)</span>
+              </div>
+            </div>
+
+            <!-- Control 2: Cullet Ratio -->
+            <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center mb-1">
+                <label for="sliderCullet" class="text-xs font-semibold text-slate-200">
+                  2. สัดส่วนเศษแก้วรีไซเคิล (Cullet Ratio)
+                </label>
+                <span id="valCulletRatio" class="font-mono text-sm font-bold text-cyan-400">25 %</span>
+              </div>
+              <input id="sliderCullet" type="range" min="0" max="50" step="5" value="25" class="w-full scada-slider cyan-slider" oninput="updateControls()" />
+              <div class="flex justify-between text-[10px] font-mono text-slate-500 mt-1">
+                <span>0% (Virgin Batch)</span>
+                <span class="text-cyan-400">ยิ่งสูงยิ่งลดพลังงานเตาหลอม</span>
+                <span>50%</span>
+              </div>
+            </div>
+
+            <!-- Control 3: Gob Cutting Speed -->
+            <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center mb-1">
+                <label for="sliderGobSpeed" class="text-xs font-semibold text-slate-200">
+                  3. ความเร็วตัดก้อนน้ำแก้ว (Gob Speed)
+                </label>
+                <span id="valGobSpeed" class="font-mono text-sm font-bold text-amber-400">45 cuts/min</span>
+              </div>
+              <input id="sliderGobSpeed" type="range" min="20" max="80" step="5" value="45" class="w-full scada-slider" oninput="updateControls()" />
+              <div class="flex justify-between text-[10px] font-mono text-slate-500 mt-1">
+                <span>20 cuts/m</span>
+                <span class="text-amber-400">40–55 (สมดุลความเย็นแม่พิมพ์)</span>
+                <span>80 (เสี่ยงรูปทรงเพี้ยน)</span>
+              </div>
+            </div>
+
+            <!-- Control 4: Annealing Cooling Rate -->
+            <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-xs font-semibold text-slate-200">4. อัตราการเย็นตัวในเตาอบ (Annealing Rate)</span>
+                <span id="valAnnealingBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">STANDARD</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <button onclick="setAnnealingRate('slow')" id="anneal-slow" class="py-2 px-2 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+                  ช้า (Slow)
+                </button>
+                <button onclick="setAnnealingRate('standard')" id="anneal-standard" class="py-2 px-2 rounded-lg text-xs font-semibold bg-cyan-600 text-white border border-cyan-400 shadow-sm transition">
+                  มาตรฐาน (Std)
+                </button>
+                <button onclick="setAnnealingRate('fast')" id="anneal-fast" class="py-2 px-2 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+                  เร็วเกินไป (Fast)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Utility Fault Simulation Card -->
+        <div class="bg-[#0e1525] border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 class="text-sm font-bold text-white">จำลองเหตุขัดข้อง (Utility Fault Simulation)</h3>
+            </div>
+            <button onclick="clearFaults()" class="text-xs font-semibold text-cyan-400 hover:text-cyan-300 underline">
+              Reset Faults
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button id="faultBtn-coolingAir" onclick="toggleFault('coolingAir')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left transition">
+              <div>
+                <div class="text-xs font-semibold text-slate-200">ลมหล่อเย็นแม่พิมพ์ตก</div>
+                <div class="text-[10px] font-mono text-slate-400">Cooling Air Drop (-65%)</div>
+              </div>
+              <span id="faultLed-coolingAir" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+            </button>
+
+            <button id="faultBtn-gasPressure" onclick="toggleFault('gasPressure')" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left transition">
+              <div>
+                <div class="text-xs font-semibold text-slate-200">ความดันก๊าซหัวเผาแกว่ง</div>
+                <div class="text-[10px] font-mono text-slate-400">Burner Gas Fluctuation</div>
+              </div>
+              <span id="faultLed-gasPressure" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN (7 cols): Live Analytical Charts (Annealing Curve & Polariscope) + Machine Inspector -->
+      <div class="lg:col-span-7 space-y-4">
+
+        <!-- Visual Diagnostics Row: Annealing Curve + Polariscope Stress View -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <!-- Annealing Lehr Temperature Curve Graph (7 cols) -->
+          <div class="md:col-span-7 bg-[#0e1525] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <h3 class="text-sm font-bold text-white">กราฟเส้นโค้งอบลดความเครียด (Annealing Curve)</h3>
+                <p class="text-[11px] text-slate-400">เปรียบเทียบอุณหภูมิจริงในเตา Lehr กับจุดวิกฤต (Annealing & Strain Point)</p>
+              </div>
+              <span class="text-[11px] font-mono text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/30">
+                550°C → 65°C
+              </span>
+            </div>
+            <div class="w-full h-[175px] bg-slate-950/90 rounded-xl border border-slate-800/80 p-1 relative">
+              <canvas id="annealingChartCanvas" class="w-full h-full block"></canvas>
+            </div>
+          </div>
+
+          <!-- Polariscope Photoelastic Stress Inspection View (5 cols) -->
+          <div class="md:col-span-5 bg-[#0e1525] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <h3 class="text-sm font-bold text-white">กล้องโพลาไรซ์ (Polariscope)</h3>
+                <p class="text-[11px] text-slate-400">ตรวจแถบสีความเค้นตกค้างในเนื้อแก้ว</p>
+              </div>
+              <span id="polariscopeGrade" class="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                GRADE A
+              </span>
+            </div>
+            <div class="w-full h-[175px] bg-slate-950/90 rounded-xl border border-slate-800/80 relative overflow-hidden flex items-center justify-center">
+              <canvas id="polariscopeCanvas" class="w-full h-full block"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Station Machine Deep-Dive Inspector -->
+        <div class="bg-[#0e1525] border border-slate-800 rounded-2xl p-4 shadow-lg">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2.5">
+              <span id="inspectorBadge" class="px-2.5 py-1 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-500/40 font-mono text-xs font-bold">
+                STATION 02
+              </span>
+              <div>
+                <h3 id="inspectorTitle" class="text-base font-bold text-white">
+                  เตาหลอมและรางลำเลียงน้ำแก้ว (Melting Furnace & Forehearth)
+                </h3>
+                <p id="inspectorSubtitle" class="text-xs text-slate-400">
+                  Continuous Regenerative End-Port / Cross-Fired Furnace
+                </p>
+              </div>
+            </div>
+            <span id="inspectorStateTag" class="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              ACTIVE // 1,520°C
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs sm:text-sm">
+            <!-- Working Principle & Live Specs -->
+            <div class="md:col-span-7 space-y-2.5">
+              <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-1">
+                  หลักการทำงานทางวิศวกรรม (Working Principle)
+                </h4>
+                <p id="inspectorPrinciple" class="text-slate-300 leading-relaxed text-xs sm:text-[13px]">
+                  วัตถุดิบ Batch ถูกหลอมด้วยหัวเผาก๊าซธรรมชาติที่สลับฝั่งเผาไหม้ทุก 20 นาทีผ่านห้องสะสมความร้อน (Regenerator) เพื่อนำความร้อนจากไอเสียกลับมาใช้อีกครั้ง น้ำแก้วจะไหลผ่านโซน Refining เพื่อไล่ฟองก๊าซออก ก่อนเข้าสู่ราง Forehearth เพื่อปรับความหนืดให้เหมาะกับการตัดก้อน Gob
+                </p>
+              </div>
+              <div class="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800">
+                <div class="text-[11px] font-mono text-slate-400 mb-1.5">ค่าพารามิเตอร์มาตรฐาน (STANDARD OPERATING SPECS)</div>
+                <div id="inspectorSpecs" class="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Preventive Maintenance (PM) Checkpoints -->
+            <div class="md:col-span-5 bg-slate-900/70 rounded-xl p-3 border border-slate-800/90">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                จุดตรวจสอบบำรุงรักษา (PM Checkpoints)
+              </h4>
+              <ul id="inspectorPMList" class="space-y-2 text-xs text-slate-300">
+                <!-- Populated dynamically -->
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- =====================================================================
+       SIMULATION ENGINE & INTERACTIVE RENDERING SCRIPT
+       ===================================================================== -->
+  <script>
+    /**
+     * =========================================================================
+     * 1. GLOBAL SIMULATION STATE & ENGINEERING CONSTANTS
+     * =========================================================================
+     */
+    const simState = {
+      isPlaying: true,
+      speedMultiplier: 1,
+      time: 0,
+      lastTimestamp: 0,
+
+      // Process Control Parameters
+      furnaceTemp: 1520,        // °C (1400 - 1600)
+      culletRatio: 25,          // % (0 - 50)
+      gobSpeed: 45,             // cuts/min (20 - 80)
+      annealingRate: 'standard',// 'slow' | 'standard' | 'fast'
+      formingMode: 'h28',       // 'h28' | 'press' | 'is'
+
+      // Utility Faults
+      faults: {
+        coolingAir: false,
+        gasPressure: false,
+      },
+
+      // Calculated Live Telemetry
+      effectiveTemp: 1520,
+      viscosityLogPoise: 3.12,
+      thermalStressNm: 24,
+      specificEnergyGJ: 4.35,
+      efficiencyPct: 94.2,
+      goodRatePcs: 42.4,
+      rejectRatePcs: 2.6,
+      defectBreakdown: {
+        blister: 0.02,
+        deformed: 0.02,
+        stressCrack: 0.018,
+      },
+
+      // UI Selection & Guided Tour
+      selectedStation: 1,       // Default focus on Melting Furnace (index 0..6)
+      guidedTourActive: false,
+
+      // Dynamic Simulation Entities
+      bubbles: [],              // Gas bubbles inside Furnace Refining Zone
+      gobs: [],                 // Molten glass gobs falling from Feeder to Forming
+      wareItems: [],            // Glassware moving along Forming -> Lehr -> Coating -> QC
+      culletParticles: [],      // Crushed cullet returning from QC to Batch House
+      packedBoxes: 0,
+      gobTimer: 0,
+      burnerSide: 'left',       // Alternates left / right regenerative burner
+      burnerTimer: 0,
+    };
+
+    /**
+     * Station Metadata & Engineering Knowledge Base (Thai + English Technical Terms)
+     */
+    const STATIONS_DATA = [
+      {
+        id: 0,
+        code: 'STATION 01',
+        shortName: '1. Batch House',
+        title: 'สถานีเตรียมและผสมวัตถุดิบ (Batch House & Charger)',
+        subtitle: 'Silos, Intensive Pan Mixer & Screw Batch Charger',
+        principle: 'วัตถุดิบหลัก ได้แก่ ทรายแก้ว (SiO₂ ~72%), โซดาแอช (Na₂CO₃ ~13%), หินปูน (CaCO₃ ~10%) และเศษแก้วรีไซเคิล (Cullet) จะถูกชั่งตวงด้วยระบบ Load Cell ความละเอียดสูง คลุกเคล้าในเครื่องผสมความเร็วสูง (Intensive Mixer) แล้วป้อนเข้าเตาหลอมอย่างต่อเนื่องตามระดับน้ำแก้ว',
+        specs: [
+          { label: 'ความแม่นยำการชั่ง', val: '±0.1% Full Scale' },
+          { label: 'ความชื้น Batch', val: '2.5% – 3.5%' },
+          { label: 'เวลาผสมต่อรอบ', val: '180 วินาที' },
+          { label: 'สัดส่วน Cullet', val: '0% – 50%' },
+        ],
+        pmCheckpoints: [
+          'สอบเทียบ (Calibrate) เซนเซอร์ Load Cell ถังชั่งวัตถุดิบทุกสัปดาห์',
+          'ตรวจสอบการสึกหรอของใบพัดกวนในเครื่อง Intensive Mixer และรางสกรู Batch Charger',
+          'ตรวจเช็กชุดแม่เหล็กแยกโลหะ (Magnetic Separator) บนสายพาน Cullet ป้องกันเศษเหล็กเข้าเตา',
+        ],
+        x: 20, w: 170
+      },
+      {
+        id: 1,
+        code: 'STATION 02',
+        shortName: '2. Melting Furnace',
+        title: 'เตาหลอมและรางลำเลียงน้ำแก้ว (Melting Furnace & Forehearth)',
+        subtitle: 'Regenerative Melting Furnace & Conditioning Channel',
+        principle: 'เตาหลอมแบบแลกเปลี่ยนความร้อน (Regenerative) สลับฝั่งหัวเผาทุก 20 นาทีเพื่อนำความร้อนจากไอเสียกลับมาอุ่นอากาศ หลอมวัตถุดิบที่ ~1,520°C จากนั้นน้ำแก้วจะไหลเข้าโซน Refining เพื่อไล่ฟองอากาศออก และลดอุณหภูมิในราง Forehearth เหลือ ~1,150°C เพื่อคุมความหนืดให้คงที่',
+        specs: [
+          { label: 'อุณหภูมิโซนหลอม', val: '1,500 – 1,550 °C' },
+          { label: 'อุณหภูมิ Forehearth', val: '1,120 – 1,180 °C' },
+          { label: 'รอบสลับหัวเผา', val: 'ทุก 20 – 30 นาที' },
+          { label: 'อายุการใช้งานเตา', val: '8 – 12 ปี (ต่อเนื่อง)' },
+        ],
+        pmCheckpoints: [
+          'ส่องกล้องวัดอุณหภูมิผนังอิฐทนไฟ (Refractory Thermography) ตรวจจุดร้อนผิดปกติ',
+          'ทำความสะอาดหัวฉีดก๊าซ (Burner Nozzles) และตรวจวาล์วสลับทิศทาง (Reversing Valve)',
+          'ตรวจสอบแท่งอิเล็กโทรดโมลิบดีนัม (Electric Boosting) และระดับน้ำแก้ว (Glass Level Sensor)',
+        ],
+        x: 205, w: 235
+      },
+      {
+        id: 2,
+        code: 'STATION 03',
+        shortName: '3. Gob Feeder',
+        title: 'ชุดป้อนและตัดก้อนน้ำแก้ว (Gob Feeder & Shears)',
+        subtitle: 'Reciprocating Plunger, Orifice Ring & Shear Mechanism',
+        principle: 'ที่ปลายสุดของราง Forehearth แท่งลูกสูบ (Plunger) จะเคลื่อนที่ขึ้นลงสัมพันธ์กับใบมีดกลไก (Shears) เพื่อตัดลำน้ำแก้วที่ไหลผ่านรู Orifice Ring ให้กลายเป็นก้อนแก้วทรงกระบอก (Gob) ที่มีน้ำหนักและอุณหภูมิแม่นยำ ก่อนส่งลงรางเข้าสู่แม่พิมพ์',
+        specs: [
+          { label: 'ความคลาดเคลื่อนน้ำหนัก', val: '±0.5 กรัม' },
+          { label: 'อุณหภูมิก้อน Gob', val: '1,080 – 1,150 °C' },
+          { label: 'ความเร็วตัด (Speed)', val: '20 – 80 cuts/min' },
+          { label: 'สารหล่อเย็นใบมีด', val: 'Water-Soluble Oil' },
+        ],
+        pmCheckpoints: [
+          'ตรวจสอบความคมและระยะขบของใบมีด Shears เพื่อป้องกันรอยแผล (Shear Mark) บนก้อนแก้ว',
+          'ตรวจระบบหัวฉีดน้ำหล่อเย็นและสารหล่อลื่นใบมีดไม่ให้อุดตัน',
+          'ตรวจเช็กความสึกหรอของ Orifice Ring และกลไก Servo ของ Plunger',
+        ],
+        x: 455, w: 120
+      },
+      {
+        id: 3,
+        code: 'STATION 04',
+        shortName: '4. Forming Machine',
+        title: 'เครื่องจักรขึ้นรูปผลิตภัณฑ์แก้ว (Forming Machine)',
+        subtitle: 'H-28 Paste Mold / Rotary Press / IS Machine',
+        principle: 'ขึ้นรูปก้อน Gob ให้เป็นผลิตภัณฑ์ตามต้องการ: (1) H-28 Paste Mold หมุนเป่าในพิมพ์เปียกและลนไฟปากแก้ว (Fire Polishing) สำหรับแก้วน้ำผนังบาง (2) Rotary Press ใช้หัวกดอัดสำหรับจานชามแก้วหนา (3) IS Machine เป่า 2 จังหวะสำหรับขวดโหล',
+        specs: [
+          { label: 'อุณหภูมิแม่พิมพ์', val: '450 – 520 °C' },
+          { label: 'แรงดันลมเป่า', val: '2.2 – 3.5 bar' },
+          { label: 'ลมหล่อเย็นแม่พิมพ์', val: 'Cooling Blower Air' },
+          { label: 'อุณหภูมิแก้วออกพิมพ์', val: '580 – 620 °C' },
+        ],
+        pmCheckpoints: [
+          'ตรวจสอบแรงดันพัดลมหล่อเย็นแม่พิมพ์ (Cooling Air) และท่อจ่ายลมเข้าแต่ละ Section',
+          'ทำความสะอาดและเคลือบสารหล่อลื่นแม่พิมพ์ (Mold Swabbing) ตามรอบเวลา',
+          'ตรวจเช็กหัวเผา Fire Polishing (สำหรับ H-28) และระบบไฮดรอลิกหัวกด Plunger',
+        ],
+        x: 590, w: 175
+      },
+      {
+        id: 4,
+        code: 'STATION 05',
+        shortName: '5. Annealing Lehr',
+        title: 'เตาอบลดความเครียด (Annealing Lehr Tunnel)',
+        subtitle: 'Continuous Recirculating Tunnel Lehr',
+        principle: 'แก้วที่เพิ่งขึ้นรูปมีความเค้นสะสมภายในสูงจึงต้องเข้าเตาอุโมงค์สายพาน เพื่อปรับอุณหภูมิให้สม่ำเสมอที่ Annealing Point (~550°C) คลายความตึงเครียดของโมเลกุล แล้วค่อยๆ ลดอุณหภูมิผ่าน Strain Point (~500°C) ลงเหลือ ~65°C อย่างควบคุม',
+        specs: [
+          { label: 'Annealing Point', val: '545 – 560 °C' },
+          { label: 'Strain Point', val: '495 – 510 °C' },
+          { label: 'อุณหภูมิทางออก', val: '60 – 75 °C' },
+          { label: 'ระยะเวลาในเตา', val: '45 – 90 นาที' },
+        ],
+        pmCheckpoints: [
+          'ตรวจสอบการทำงานของพัดลมหมุนเวียนอากาศ (Recirculation Fans) ทุกโซนอุณหภูมิ',
+          'ตรวจเช็กความตึงและการเดินแนวตรงของสายพานลวดถัก (Wire Mesh Belt)',
+          'สอบเทียบหัววัดอุณหภูมิ Thermocouple ตลอดความยาวอุโมงค์ 6 โซน',
+        ],
+        x: 780, w: 230
+      },
+      {
+        id: 5,
+        code: 'STATION 06',
+        shortName: '6. Surface Coating',
+        title: 'ระบบเคลือบผิวกันรอย (Hot-End & Cold-End Coating)',
+        subtitle: 'Tin Oxide Vapor Hood & Polyethylene Sprayer',
+        principle: 'พ่นไอสารประกอบดีบุก (SnCl₄) ที่ผิวแก้วร้อน (~550°C) เป็นชั้นฐานยึดเกาะ (Hot-End Coating) และพ่นสารโพลีเอทิลีนหรือแว็กซ์สูตรน้ำหลังออกจากเตา Lehr (Cold-End Coating) เพื่อเพิ่มความลื่น ลดการเสียดสีและรอยขีดข่วนบนสายพานลำเลียง',
+        specs: [
+          { label: 'Hot-End Temp', val: '520 – 560 °C' },
+          { label: 'Cold-End Temp', val: '85 – 115 °C' },
+          { label: 'ความหนาชั้นฟิล์ม', val: '20 – 40 CTU' },
+          { label: 'ค่าสัมประสิทธิ์เสียดทาน', val: 'COF < 0.15' },
+        ],
+        pmCheckpoints: [
+          'ล้างทำความสะอาดหัวฉีดสเปรย์ Cold-End ป้องกันคราบแว็กซ์อุดตัน',
+          'ตรวจระบบดูดไอสารเคมี (Exhaust Scrubber) บริเวณอุโมงค์ Hot-End Coating',
+          'สุ่มวัดค่าความหนาฟิล์มด้วยเครื่อง Hot-End Coating Meter ทุกกะ',
+        ],
+        x: 1025, w: 135
+      },
+      {
+        id: 6,
+        code: 'STATION 07',
+        shortName: '7. Cold-End QC & Cullet',
+        title: 'ตรวจสอบคุณภาพอัตโนมัติและบดเศษแก้ว (QC & Cullet Loop)',
+        subtitle: 'Optical/Laser Inspection, Polariscope & Cullet Crusher',
+        principle: 'ตรวจสอบ 100% ด้วยกล้องความเร็วสูงและเลเซอร์เพื่อหาฟองอากาศ รอยร้าว และขนาดที่เพี้ยน พร้อมสุ่มตรวจความเค้นด้วยแสงโพลาไรซ์ ชิ้นงานดีจะถูกบรรจุลงกล่อง/พาเลท ส่วนชิ้นงานเสียจะถูกดีดลงเครื่องบด (Cullet Crusher) ส่งกลับไปหลอมใหม่ที่สถานี 1',
+        specs: [
+          { label: 'ความเร็วตรวจสอบ', val: 'สูงสุด 400 ชิ้น/นาที' },
+          { label: 'เกณฑ์ความเค้นสูงสุด', val: '< 50 nm/cm' },
+          { label: 'ขนาดเศษแก้วบด', val: '10 – 25 mm' },
+          { label: 'อัตราการรีไซเคิล', val: '100% Closed-Loop' },
+        ],
+        pmCheckpoints: [
+          'ทำความสะอาดเลนส์กล้อง Optical Camera และหัวสแกนเลเซอร์ทุกกะการทำงาน',
+          'ทดสอบระบบดีดคัดแยก (Reject Pusher) ด้วยชิ้นงานตัวอย่างที่มีตำหนิมาตรฐาน (Test Samples)',
+          'ตรวจสอบค้อนบด (Crusher Hammers) และสายพานลำเลียง Cullet กลับสู่ Batch House',
+        ],
+        x: 1175, w: 205
+      }
+    ];
+
+    /**
+     * =========================================================================
+     * 2. INITIALIZATION & DOM BINDINGS
+     * =========================================================================
+     */
+    const processCanvas = document.getElementById('processCanvas');
+    const ctx = processCanvas.getContext('2d');
+
+    const annealingCanvas = document.getElementById('annealingChartCanvas');
+    const actx = annealingCanvas.getContext('2d');
+
+    const polariscopeCanvas = document.getElementById('polariscopeCanvas');
+    const pctx = polariscopeCanvas.getContext('2d');
+
+    // Logical Coordinate Dimensions for Process Flow Canvas
+    const LOGICAL_W = 1400;
+    const LOGICAL_H = 470;
+
+    function initSimulation() {
+      // Populate initial bubbles in Furnace Refining Zone
+      for (let i = 0; i < 18; i++) {
+        simState.bubbles.push({
+          x: 295 + Math.random() * 115,
+          y: 235 + Math.random() * 45,
+          r: 1.5 + Math.random() * 2.5,
+          vy: 8 + Math.random() * 14
+        });
+      }
+
+      // Seed initial ware items along the conveyor so line looks alive immediately
+      const seedPositions = [690, 750, 820, 890, 960, 1045, 1120, 1205];
+      seedPositions.forEach((px) => {
+        simState.wareItems.push(createWareItem(px));
+      });
+
+      // Seed initial cullet particles in return loop
+      for (let i = 0; i < 14; i++) {
+        simState.culletParticles.push({
+          progress: i / 14, // 0 (at crusher) -> 1 (at Batch House cullet silo)
+          size: 3 + Math.random() * 2.5,
+          color: Math.random() > 0.3 ? '#38bdf8' : '#34d399'
+        });
+      }
+
+      updateControls();
+      selectStation(1); // Start with Furnace inspected
+      handleResize();
+      window.addEventListener('resize', handleResize);
+
+      // Canvas Click & Touch Interaction
+      processCanvas.addEventListener('click', handleCanvasClick);
+
+      // Start main animation loop
+      requestAnimationFrame(animationLoop);
+    }
+
+    /**
+     * Handle Responsive HiDPI Canvas Resizing
+     */
+    function handleResize() {
+      // 1. Main Process Canvas
+      const rect = processCanvas.parentElement.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      processCanvas.width = rect.width * dpr;
+      processCanvas.height = rect.height * dpr;
+
+      // 2. Annealing Chart Canvas
+      const aRect = annealingCanvas.parentElement.getBoundingClientRect();
+      annealingCanvas.width = aRect.width * dpr;
+      annealingCanvas.height = aRect.height * dpr;
+
+      // 3. Polariscope Canvas
+      const pRect = polariscopeCanvas.parentElement.getBoundingClientRect();
+      polariscopeCanvas.width = pRect.width * dpr;
+      polariscopeCanvas.height = pRect.height * dpr;
+    }
+
+    /**
+     * =========================================================================
+     * 3. PROCESS ENGINEERING PHYSICS & KPI CALCULATIONS
+     * =========================================================================
+     */
+    function updateControls() {
+      simState.furnaceTemp = parseInt(document.getElementById('sliderTemp').value, 10);
+      simState.culletRatio = parseInt(document.getElementById('sliderCullet').value, 10);
+      simState.gobSpeed = parseInt(document.getElementById('sliderGobSpeed').value, 10);
+
+      document.getElementById('valFurnaceTemp').textContent = `${simState.furnaceTemp.toLocaleString()} °C`;
+      document.getElementById('valCulletRatio').textContent = `${simState.culletRatio} %`;
+      document.getElementById('valGobSpeed').textContent = `${simState.gobSpeed} cuts/min`;
+
+      recalculateEngineeringMetrics();
+    }
+
+    function recalculateEngineeringMetrics() {
+      // Burner Gas Fluctuation adds oscillatory instability
+      const gasFluctuation = simState.faults.gasPressure
+        ? Math.sin(simState.time * 4.5) * 42 - 25
+        : 0;
+
+      const effectiveTemp = simState.furnaceTemp + gasFluctuation;
+      simState.effectiveTemp = effectiveTemp;
+
+      // 1. Glass Viscosity at Gob Feeder (Arrhenius-like inverse relation to temp)
+      // Optimal around 1520°C -> ~3.12 log10 Poise
+      const visc = 3.12 - (effectiveTemp - 1520) * 0.0042;
+      simState.viscosityLogPoise = Math.max(2.5, Math.min(3.9, visc));
+
+      // 2. Ideal Melting Temperature shifts slightly lower with higher Cullet Ratio
+      const idealTemp = 1520 - (simState.culletRatio * 0.6);
+
+      // 3. Seed/Blister Defect Probability
+      // High if effectiveTemp is too low relative to idealTemp, or gas is fluctuating
+      let blisterProb = 0.012;
+      if (effectiveTemp < idealTemp - 15) {
+        blisterProb += Math.pow((idealTemp - 15 - effectiveTemp) / 45, 1.7) * 0.24;
+      }
+      if (simState.faults.gasPressure) {
+        blisterProb += 0.085;
+      }
+
+      // 4. Forming Deformation Probability
+      // High if Gob Speed > 58 (insufficient mold cooling time), Cooling Air fault, or glass too runny (>1575°C)
+      let deformProb = 0.014;
+      if (simState.gobSpeed > 55) {
+        deformProb += Math.pow((simState.gobSpeed - 55) / 25, 1.5) * 0.18;
+      }
+      if (effectiveTemp > 1570) {
+        deformProb += ((effectiveTemp - 1570) / 30) * 0.12;
+      }
+      if (simState.faults.coolingAir) {
+        deformProb += 0.22;
+      }
+
+      // 5. Residual Thermal Stress & Crack Probability (Driven by Annealing Cooling Rate)
+      let baseStress = 24;
+      let stressCrackProb = 0.012;
+      if (simState.annealingRate === 'slow') {
+        baseStress = 12;
+        stressCrackProb = 0.005;
+      } else if (simState.annealingRate === 'standard') {
+        baseStress = 24;
+        stressCrackProb = 0.014;
+      } else if (simState.annealingRate === 'fast') {
+        baseStress = 132;
+        stressCrackProb = 0.21;
+      }
+      // Thermal shock delta from high furnace temp
+      if (effectiveTemp > 1565) {
+        baseStress += (effectiveTemp - 1565) * 0.45;
+      }
+      simState.thermalStressNm = Math.round(baseStress);
+
+      simState.defectBreakdown = {
+        blister: Math.min(0.45, blisterProb),
+        deformed: Math.min(0.45, deformProb),
+        stressCrack: Math.min(0.45, stressCrackProb)
+      };
+
+      const totalRejectProb = Math.min(
+        0.72,
+        simState.defectBreakdown.blister +
+        simState.defectBreakdown.deformed +
+        simState.defectBreakdown.stressCrack
+      );
+
+      simState.efficiencyPct = Math.max(25, (1 - totalRejectProb) * 100);
+      simState.goodRatePcs = (simState.gobSpeed * (simState.efficiencyPct / 100));
+      simState.rejectRatePcs = simState.gobSpeed - simState.goodRatePcs;
+
+      // 6. Specific Energy Consumption (GJ/ton)
+      // Base 4.65 GJ/ton at 0% cullet, 1520°C. Every 10% cullet saves ~2.6% energy.
+      const culletSavingsFactor = 1 - (simState.culletRatio * 0.0026);
+      const tempPenalty = 1 + ((simState.furnaceTemp - 1520) * 0.0014);
+      const annealFactor = simState.annealingRate === 'slow' ? 1.03 : (simState.annealingRate === 'fast' ? 0.98 : 1.0);
+      simState.specificEnergyGJ = 4.65 * culletSavingsFactor * tempPenalty * annealFactor;
+
+      updateTelemetryUI();
+    }
+
+    function updateTelemetryUI() {
+      // Efficiency
+      const effEl = document.getElementById('kpiEfficiency');
+      const effBar = document.getElementById('barEfficiency');
+      const effTrend = document.getElementById('kpiEffTrend');
+      effEl.textContent = `${simState.efficiencyPct.toFixed(1)}%`;
+      effBar.style.width = `${simState.efficiencyPct}%`;
+
+      if (simState.efficiencyPct >= 90) {
+        effEl.className = 'text-2xl font-mono font-bold text-emerald-400';
+        effBar.className = 'bg-emerald-500 h-full rounded-full transition-all duration-300';
+        effTrend.textContent = 'OPTIMAL';
+        effTrend.className = 'text-xs font-mono text-emerald-400/80';
+      } else if (simState.efficiencyPct >= 80) {
+        effEl.className = 'text-2xl font-mono font-bold text-amber-400';
+        effBar.className = 'bg-amber-500 h-full rounded-full transition-all duration-300';
+        effTrend.textContent = 'WARNING';
+        effTrend.className = 'text-xs font-mono text-amber-400/80';
+      } else {
+        effEl.className = 'text-2xl font-mono font-bold text-rose-400';
+        effBar.className = 'bg-rose-500 h-full rounded-full transition-all duration-300';
+        effTrend.textContent = 'LOW YIELD';
+        effTrend.className = 'text-xs font-mono text-rose-400/80';
+      }
+
+      // Good vs Reject
+      document.getElementById('kpiGoodRate').textContent = simState.goodRatePcs.toFixed(1);
+      document.getElementById('kpiRejectRate').textContent = simState.rejectRatePcs.toFixed(1);
+      document.getElementById('barGoodRatio').style.width = `${simState.efficiencyPct}%`;
+      document.getElementById('barRejectRatio').style.width = `${100 - simState.efficiencyPct}%`;
+
+      // Viscosity
+      const viscEl = document.getElementById('kpiViscosity');
+      const viscNote = document.getElementById('kpiViscosityNote');
+      viscEl.textContent = simState.viscosityLogPoise.toFixed(2);
+      if (simState.viscosityLogPoise > 3.35) {
+        viscEl.className = 'text-2xl font-mono font-bold text-rose-400';
+        viscNote.textContent = 'น้ำแก้วหนืดเกินไป ฟองอากาศลอยออกยาก';
+      } else if (simState.viscosityLogPoise < 2.92) {
+        viscEl.className = 'text-2xl font-mono font-bold text-amber-400';
+        viscNote.textContent = 'น้ำแก้วเหลวมาก ก้อน Gob เสียทรงง่าย';
+      } else {
+        viscEl.className = 'text-2xl font-mono font-bold text-orange-400';
+        viscNote.textContent = 'ความหนืดเหมาะสมต่อการตัด Gob';
+      }
+
+      // Thermal Stress
+      const stressEl = document.getElementById('kpiStress');
+      const stressNote = document.getElementById('kpiStressNote');
+      const polGrade = document.getElementById('polariscopeGrade');
+      stressEl.textContent = simState.thermalStressNm;
+      if (simState.thermalStressNm > 50) {
+        stressEl.className = 'text-2xl font-mono font-bold text-rose-400';
+        stressNote.textContent = 'ความเค้นเกินเกณฑ์! เสี่ยงแตกร้าวฉับพลัน';
+        polGrade.textContent = 'HIGH STRESS';
+        polGrade.className = 'text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40';
+      } else {
+        stressEl.className = 'text-2xl font-mono font-bold text-cyan-400';
+        stressNote.textContent = 'โครงสร้างโมเลกุลคลายตัวสมบูรณ์';
+        polGrade.textContent = 'GRADE A';
+        polGrade.className = 'text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300';
+      }
+
+      // Energy & CO2
+      document.getElementById('kpiEnergy').textContent = simState.specificEnergyGJ.toFixed(2);
+      const co2Save = (simState.culletRatio * 0.3).toFixed(1);
+      document.getElementById('kpiCo2Save').textContent = `-${co2Save}% CO₂`;
+      document.getElementById('kpiEnergyNote').textContent = `Cullet ${simState.culletRatio}% ลดการใช้เชื้อเพลิงเตา`;
+
+      // Utilities & System Alarm Status
+      const hasFault = simState.faults.coolingAir || simState.faults.gasPressure;
+      const isDegraded = simState.efficiencyPct < 82;
+
+      const gasText = document.getElementById('utilGasVal');
+      const coolAirText = document.getElementById('utilCoolAirVal');
+      const utilStatus = document.getElementById('kpiUtilStatus');
+
+      if (simState.faults.gasPressure) {
+        const dynBar = (2.4 + Math.sin(simState.time * 6) * 0.7).toFixed(1);
+        gasText.textContent = `${dynBar} bar (UNSTABLE)`;
+        gasText.className = 'text-rose-400 font-bold';
+      } else {
+        gasText.textContent = '2.4 bar (OK)';
+        gasText.className = 'text-amber-300';
+      }
+
+      if (simState.faults.coolingAir) {
+        coolAirText.textContent = '35% (LOW ALARM)';
+        coolAirText.className = 'text-rose-400 font-bold';
+      } else {
+        coolAirText.textContent = '100% (OK)';
+        coolAirText.className = 'text-cyan-300';
+      }
+
+      const sysBadge = document.getElementById('systemStatusBadge');
+      const sysDot = document.getElementById('systemStatusDot');
+      const sysText = document.getElementById('systemStatusText');
+      const alarmBanner = document.getElementById('alarmBanner');
+      const alarmMsg = document.getElementById('alarmMessage');
+
+      if (hasFault || isDegraded) {
+        utilStatus.textContent = hasFault ? 'FAULT' : 'WARNING';
+        utilStatus.className = 'font-mono text-[11px] text-rose-400 font-bold';
+
+        sysBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40';
+        sysDot.className = 'w-2 h-2 rounded-full bg-rose-500 led-blink';
+        sysText.textContent = hasFault ? 'UTILITY ALARM' : 'PROCESS WARNING';
+
+        alarmBanner.classList.remove('hidden');
+        if (simState.faults.coolingAir && simState.faults.gasPressure) {
+          alarmMsg.textContent = 'วิกฤต: ลมหล่อเย็นแม่พิมพ์ตก (35%) และความดันก๊าซหัวเผาแกว่ง — ของเสียพุ่งสูง!';
+        } else if (simState.faults.coolingAir) {
+          alarmMsg.textContent = 'แจ้งเตือน: แรงดันลมหล่อเย็นแม่พิมพ์ (Mold Cooling Air) ตกเหลือ 35% ส่งผลให้แม่พิมพ์ร้อนจัดและแก้วเสียรูปทรง';
+        } else if (simState.faults.gasPressure) {
+          alarmMsg.textContent = 'แจ้งเตือน: ความดันก๊าซเชื้อเพลิงหัวเผาแกว่ง ทำให้อุณหภูมิเตาหลอมไม่เสถียรและเกิดฟองอากาศ (Blisters)';
+        } else {
+          alarmMsg.textContent = 'แจ้งเตือนวิศวกรรม: อัตราของเสียสูงกว่าเกณฑ์ โปรดตรวจสอบอุณหภูมิเตาหลอม ความเร็วตัด Gob หรืออัตราการเย็นตัวในเตา Lehr';
+        }
+      } else {
+        utilStatus.textContent = 'NOMINAL';
+        utilStatus.className = 'font-mono text-[11px] text-emerald-400';
+
+        sysBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+        sysDot.className = 'w-2 h-2 rounded-full bg-emerald-400 led-blink';
+        sysText.textContent = 'NORMAL OPERATION';
+        alarmBanner.classList.add('hidden');
+      }
+
+      // Sync Inspector Live Specs if Station 1 (Furnace) or Station 4 (Annealing) is selected
+      updateInspectorLiveTag();
+    }
+
+    /**
+     * =========================================================================
+     * 4. USER INTERACTION HANDLERS
+     * =========================================================================
+     */
+    function togglePlayPause() {
+      simState.isPlaying = !simState.isPlaying;
+      document.getElementById('playPauseLabel').textContent = simState.isPlaying ? 'หยุดชั่วคราว' : 'เล่นต่อ';
+      document.getElementById('iconPause').classList.toggle('hidden', !simState.isPlaying);
+      document.getElementById('iconPlay').classList.toggle('hidden', simState.isPlaying);
+    }
+
+    function setSimSpeed(mult) {
+      simState.speedMultiplier = mult;
+      document.getElementById('speed1x').className = mult === 1
+        ? 'px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-slate-700 text-white transition'
+        : 'px-2.5 py-1 rounded-md text-xs font-mono font-bold text-slate-400 hover:text-white transition';
+      document.getElementById('speed2x').className = mult === 2
+        ? 'px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-orange-600 text-white transition'
+        : 'px-2.5 py-1 rounded-md text-xs font-mono font-bold text-slate-400 hover:text-white transition';
+    }
+
+    function setFormingMode(mode) {
+      simState.formingMode = mode;
+      ['h28', 'press', 'is'].forEach(m => {
+        const btn = document.getElementById(`modeBtn-${m}`);
+        btn.className = m === mode
+          ? 'px-2.5 py-1 rounded-md font-medium bg-orange-600 text-white transition shadow-sm'
+          : 'px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition';
+      });
+    }
+
+    function setAnnealingRate(rate) {
+      simState.annealingRate = rate;
+      const badge = document.getElementById('valAnnealingBadge');
+
+      ['slow', 'standard', 'fast'].forEach(r => {
+        const btn = document.getElementById(`anneal-${r}`);
+        if (r === rate) {
+          btn.className = r === 'fast'
+            ? 'py-2 px-2 rounded-lg text-xs font-semibold bg-rose-600 text-white border border-rose-400 shadow-sm transition'
+            : 'py-2 px-2 rounded-lg text-xs font-semibold bg-cyan-600 text-white border border-cyan-400 shadow-sm transition';
+        } else {
+          btn.className = 'py-2 px-2 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition';
+        }
+      });
+
+      if (rate === 'slow') {
+        badge.textContent = 'SLOW (LOW STRESS)';
+        badge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300';
+      } else if (rate === 'standard') {
+        badge.textContent = 'STANDARD';
+        badge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300';
+      } else {
+        badge.textContent = 'TOO FAST (STRESS!)';
+        badge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300';
+      }
+
+      recalculateEngineeringMetrics();
+    }
+
+    function toggleFault(faultKey) {
+      simState.faults[faultKey] = !simState.faults[faultKey];
+      updateFaultButtonsUI();
+      recalculateEngineeringMetrics();
+    }
+
+    function clearFaults() {
+      simState.faults.coolingAir = false;
+      simState.faults.gasPressure = false;
+      updateFaultButtonsUI();
+      recalculateEngineeringMetrics();
+    }
+
+    function updateFaultButtonsUI() {
+      ['coolingAir', 'gasPressure'].forEach(key => {
+        const active = simState.faults[key];
+        const btn = document.getElementById(`faultBtn-${key}`);
+        const led = document.getElementById(`faultLed-${key}`);
+        if (active) {
+          btn.className = 'flex items-center justify-between p-2.5 rounded-xl bg-rose-950/70 border border-rose-500/70 text-left transition shadow-md shadow-rose-950/40';
+          led.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 led-blink';
+        } else {
+          btn.className = 'flex items-center justify-between p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left transition';
+          led.className = 'w-2.5 h-2.5 rounded-full bg-slate-600';
+        }
+      });
+    }
+
+    function resetSimulation() {
+      document.getElementById('sliderTemp').value = 1520;
+      document.getElementById('sliderCullet').value = 25;
+      document.getElementById('sliderGobSpeed').value = 45;
+      setAnnealingRate('standard');
+      setFormingMode('h28');
+      clearFaults();
+      setSimSpeed(1);
+      if (!simState.isPlaying) togglePlayPause();
+      updateControls();
+    }
+
+    /**
+     * Station Selection, Guided Tour & Machine Inspector
+     */
+    function selectStation(index) {
+      simState.selectedStation = index;
+      const st = STATIONS_DATA[index];
+
+      // Highlight Station Pills
+      STATIONS_DATA.forEach((_, i) => {
+        const pill = document.getElementById(`pill-${i}`);
+        if (i === index) {
+          pill.className = 'station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-orange-600 text-white border border-orange-400 shadow-sm transition';
+        } else {
+          pill.className = 'station-pill shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition';
+        }
+      });
+
+      // Update Machine Inspector Card
+      document.getElementById('inspectorBadge').textContent = st.code;
+      document.getElementById('inspectorTitle').textContent = st.title;
+      document.getElementById('inspectorSubtitle').textContent = st.subtitle;
+      document.getElementById('inspectorPrinciple').textContent = st.principle;
+
+      const specsContainer = document.getElementById('inspectorSpecs');
+      specsContainer.innerHTML = st.specs.map(s => `
+        <div class="bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+          <div class="text-[10px] text-slate-500">${s.label}</div>
+          <div class="text-xs font-semibold text-slate-200">${s.val}</div>
+        </div>
+      `).join('');
+
+      const pmList = document.getElementById('inspectorPMList');
+      pmList.innerHTML = st.pmCheckpoints.map(item => `
+        <li class="flex items-start gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0"></span>
+          <span>${item}</span>
+        </li>
+      `).join('');
+
+      updateInspectorLiveTag();
+
+      // Update Guided Tour Bar if active
+      if (simState.guidedTourActive) {
+        document.getElementById('tourStepBadge').textContent = `STEP ${index + 1} / 7`;
+        document.getElementById('tourStepTitle').textContent = st.title;
+        document.getElementById('tourStepDesc').textContent = st.principle;
+
+        // Auto-scroll horizontal canvas wrapper smoothly to center the selected station
+        const wrapper = document.getElementById('canvasScrollWrapper');
+        const targetCenter = ((st.x + st.w / 2) / LOGICAL_W) * wrapper.scrollWidth;
+        wrapper.scrollTo({
+          left: Math.max(0, targetCenter - wrapper.clientWidth / 2),
+          behavior: 'smooth'
+        });
+      }
+    }
+
+    function updateInspectorLiveTag() {
+      const tag = document.getElementById('inspectorStateTag');
+      const idx = simState.selectedStation;
+      if (idx === 1) {
+        tag.textContent = `ACTIVE // ${Math.round(simState.effectiveTemp).toLocaleString()}°C`;
+      } else if (idx === 2) {
+        tag.textContent = `FEEDING // ${simState.gobSpeed} CUTS/M`;
+      } else if (idx === 3) {
+        const modeMap = { h28: 'H-28 PASTE MOLD', press: 'ROTARY PRESS', is: 'IS BLOW & BLOW' };
+        tag.textContent = `MODE // ${modeMap[simState.formingMode]}`;
+      } else if (idx === 4) {
+        tag.textContent = `STRESS // ${simState.thermalStressNm} nm/cm`;
+      } else if (idx === 6) {
+        tag.textContent = `EFFICIENCY // ${simState.efficiencyPct.toFixed(1)}%`;
+      } else {
+        tag.textContent = 'ONLINE // RUNNING';
+      }
+    }
+
+    function toggleGuidedTour() {
+      simState.guidedTourActive = !simState.guidedTourActive;
+      const tourBar = document.getElementById('guidedTourBar');
+      const btn = document.getElementById('btnGuidedTour');
+      if (simState.guidedTourActive) {
+        tourBar.classList.remove('hidden');
+        btn.classList.add('bg-cyan-500/30', 'border-cyan-400');
+        selectStation(0);
+      } else {
+        tourBar.classList.add('hidden');
+        btn.classList.remove('bg-cyan-500/30', 'border-cyan-400');
+      }
+    }
+
+    function nextTourStep() {
+      const next = (simState.selectedStation + 1) % STATIONS_DATA.length;
+      selectStation(next);
+    }
+
+    function prevTourStep() {
+      const prev = (simState.selectedStation - 1 + STATIONS_DATA.length) % STATIONS_DATA.length;
+      selectStation(prev);
+    }
+
+    function handleCanvasClick(e) {
+      const rect = processCanvas.getBoundingClientRect();
+      const clickX = ((e.clientX - rect.left) / rect.width) * LOGICAL_W;
+      const clickY = ((e.clientY - rect.top) / rect.height) * LOGICAL_H;
+
+      // Check which station box was clicked
+      if (clickY >= 35 && clickY <= 365) {
+        for (let i = 0; i < STATIONS_DATA.length; i++) {
+          const st = STATIONS_DATA[i];
+          if (clickX >= st.x && clickX <= st.x + st.w) {
+            selectStation(i);
+            break;
+          }
+        }
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 5. PARTICLE & PRODUCT ENTITY LOGIC
+     * =========================================================================
+     */
+    function createWareItem(startX) {
+      // Determine defects probabilistically based on current engineering state
+      const hasBlister = Math.random() < simState.defectBreakdown.blister;
+      const hasDeform = Math.random() < simState.defectBreakdown.deformed;
+      const hasStressCrack = Math.random() < simState.defectBreakdown.stressCrack;
+
+      let defectType = null;
+      if (hasDeform) defectType = 'DEFORMED';
+      else if (hasBlister) defectType = 'BLISTER';
+      else if (hasStressCrack) defectType = 'CRACK';
+
+      return {
+        x: startX,
+        y: 256,
+        shape: simState.formingMode, // 'h28' | 'press' | 'is'
+        defect: defectType,
+        scanned: false,
+        rejected: false,
+        rejectY: 0,
+        coatingLevel: 0, // 0 -> 1 (hot-end) -> 2 (cold-end)
+      };
+    }
+
+    function updateEntities(dt) {
+      const effectiveDt = dt * simState.speedMultiplier;
+      simState.time += effectiveDt;
+
+      // Recalculate metrics continuously when gas fluctuation fault is active
+      if (simState.faults.gasPressure) {
+        recalculateEngineeringMetrics();
+      }
+
+      // 1. Alternate Regenerative Burner Side every 3.5 seconds
+      simState.burnerTimer += effectiveDt;
+      if (simState.burnerTimer > 3.5) {
+        simState.burnerTimer = 0;
+        simState.burnerSide = simState.burnerSide === 'left' ? 'right' : 'left';
+      }
+
+      // 2. Furnace Refining Bubbles
+      // Higher temperature -> faster bubble rise & escape; lower temp -> bubbles linger
+      const riseFactor = Math.max(0.35, (simState.effectiveTemp - 1380) / 140);
+      simState.bubbles.forEach(b => {
+        b.y -= b.vy * riseFactor * effectiveDt;
+        b.x += 5 * effectiveDt; // Gentle forward glass flow
+        if (b.y < 216 || b.x > 415) {
+          b.x = 285 + Math.random() * 120;
+          b.y = 265 + Math.random() * 18;
+        }
+      });
+
+      // 3. Gob Feeder Cutting Cadence
+      // Map 20..80 cuts/min to visual spawn interval (1.6s down to 0.45s)
+      const spawnInterval = 34 / simState.gobSpeed;
+      simState.gobTimer += effectiveDt;
+      if (simState.gobTimer >= spawnInterval) {
+        simState.gobTimer = 0;
+        simState.gobs.push({
+          x: 505,
+          y: 215,
+          progress: 0, // 0 -> 1 (falls into Forming Machine)
+        });
+      }
+
+      // Update falling Gobs
+      for (let i = simState.gobs.length - 1; i >= 0; i--) {
+        const g = simState.gobs[i];
+        g.progress += effectiveDt * 2.2;
+        if (g.progress >= 1) {
+          simState.gobs.splice(i, 1);
+          // Spawn newly formed glass product exiting Forming Machine
+          simState.wareItems.push(createWareItem(685));
+        }
+      }
+
+      // 4. Conveyor Belt Glassware Movement (Station 4 -> 5 -> 6 -> 7)
+      const conveyorSpeed = 62 + (simState.gobSpeed - 20) * 0.45;
+      for (let i = simState.wareItems.length - 1; i >= 0; i--) {
+        const item = simState.wareItems[i];
+
+        if (!item.rejected) {
+          item.x += conveyorSpeed * effectiveDt;
+
+          // Hot-End Coating zone (~1045)
+          if (item.x > 1045 && item.coatingLevel < 1) item.coatingLevel = 1;
+          // Cold-End Coating zone (~1125)
+          if (item.x > 1125 && item.coatingLevel < 2) item.coatingLevel = 2;
+
+          // Cold-End QC Laser Scanner (~1220)
+          if (item.x >= 1220 && !item.scanned) {
+            item.scanned = true;
+            if (item.defect !== null) {
+              item.rejected = true;
+            }
+          }
+
+          // Reached Packaging Palletizer (~1345)
+          if (item.x >= 1345) {
+            simState.packedBoxes++;
+            simState.wareItems.splice(i, 1);
+          }
+        } else {
+          // Rejected item drops down into Cullet Crusher chute
+          item.rejectY += 130 * effectiveDt;
+          item.x += 12 * effectiveDt;
+          if (item.rejectY >= 125) {
+            simState.wareItems.splice(i, 1);
+            // Spawn new crushed cullet particle into the return loop!
+            simState.culletParticles.push({
+              progress: 0,
+              size: 3.5 + Math.random() * 2,
+              color: '#38bdf8'
+            });
+          }
+        }
+      }
+
+      // 5. Cullet Return Loop Particles (Station 7 Crusher -> Bottom Pipe -> Station 1 Cullet Silo)
+      const culletLoopSpeed = 0.08 + (simState.culletRatio / 50) * 0.07;
+      for (let i = simState.culletParticles.length - 1; i >= 0; i--) {
+        const p = simState.culletParticles[i];
+        p.progress += culletLoopSpeed * effectiveDt;
+        if (p.progress >= 1) {
+          if (simState.culletParticles.length > 22) {
+            simState.culletParticles.splice(i, 1);
+          } else {
+            p.progress = 0;
+          }
+        }
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 6. MAIN PROCESS FLOW CANVAS RENDERING (ALL 7 STATIONS + CULLET LOOP)
+     * =========================================================================
+     */
+    function renderProcessCanvas() {
+      const dpr = processCanvas.width / rectWidthSafe(processCanvas);
+      const scaleX = processCanvas.width / LOGICAL_W;
+      const scaleY = processCanvas.height / LOGICAL_H;
+
+      ctx.save();
+      ctx.scale(scaleX, scaleY);
+      ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+      // Draw Cullet Closed-Loop Return Pipe (Bottom Level y = 415)
+      drawCulletReturnLoop();
+
+      // Draw Main Hot-End / Cold-End Conveyor Line (y = 262)
+      drawMainConveyor();
+
+      // Draw All 7 Industrial Stations
+      drawStation1_BatchHouse();
+      drawStation2_FurnaceAndForehearth();
+      drawStation3_GobFeeder();
+      drawStation4_FormingMachine();
+      drawStation5_AnnealingLehr();
+      drawStation6_SurfaceCoating();
+      drawStation7_QCAndPackaging();
+
+      // Draw Moving Gobs & Glassware Items
+      drawFallingGobs();
+      drawWareItems();
+
+      // Draw Station Bounding Boxes & Selection / Guided Tour Highlight
+      drawStationOverlays();
+
+      ctx.restore();
+    }
+
+    function rectWidthSafe(el) {
+      return el.getBoundingClientRect().width || LOGICAL_W;
+    }
+
+    /**
+     * Draw Closed-Loop Cullet Return Conveyor (Station 7 Crusher -> Station 1 Cullet Silo)
+     */
+    function drawCulletReturnLoop() {
+      ctx.save();
+      // Pipe path: (1235, 385) -> (1235, 422) -> (155, 422) -> (155, 115) -> (155, 115)
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 12;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(1235, 375);
+      ctx.lineTo(1235, 422);
+      ctx.lineTo(155, 422);
+      ctx.lineTo(155, 115);
+      ctx.stroke();
+
+      // Inner cyan dashed flow line
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.lineDashOffset = simState.time * 28;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Loop Label Badge
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#0e7490';
+      ctx.lineWidth = 1;
+      roundRect(ctx, 560, 410, 290, 24, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#22d3ee';
+      ctx.font = '600 11px "Noto Sans Thai", "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`♻️ CULLET CLOSED-LOOP RECYCLING (${simState.culletRatio}% Cullet Mix)`, 705, 426);
+
+      // Draw Crushed Cullet Particles along the path
+      simState.culletParticles.forEach(p => {
+        const pos = getCulletLoopCoords(p.progress);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.restore();
+    }
+
+    function getCulletLoopCoords(t) {
+      // Total path length ~ 47 + 1080 + 307 = 1434
+      const d1 = 47 / 1434;
+      const d2 = (47 + 1080) / 1434;
+      if (t < d1) {
+        const local = t / d1;
+        return { x: 1235, y: 375 + local * 47 };
+      } else if (t < d2) {
+        const local = (t - d1) / (d2 - d1);
+        return { x: 1235 - local * 1080, y: 422 };
+      } else {
+        const local = (t - d2) / (1 - d2);
+        return { x: 155, y: 422 - local * 307 };
+      }
+    }
+
+    /**
+     * Draw Main Process Conveyor Belt from Station 4 to Station 7
+     */
+    function drawMainConveyor() {
+      ctx.save();
+      ctx.fillStyle = '#1e293b';
+      roundRect(ctx, 675, 260, 680, 10, 4);
+      ctx.fill();
+
+      // Animated conveyor rollers
+      ctx.fillStyle = '#475569';
+      const offset = (simState.time * 40) % 24;
+      for (let x = 685 + offset; x < 1345; x += 24) {
+        ctx.beginPath();
+        ctx.arc(x, 265, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    /**
+     * STATION 1: BATCH HOUSE (Silos, Mixer, Batch Charger)
+     */
+    function drawStation1_BatchHouse() {
+      ctx.save();
+      const silos = [
+        { label: 'SiO₂', sub: 'ทราย', x: 32, color: '#eab308' },
+        { label: 'Na₂CO₃', sub: 'โซดา', x: 68, color: '#94a3b8' },
+        { label: 'CaCO₃', sub: 'หินปูน', x: 104, color: '#cbd5e1' },
+        { label: 'Cullet', sub: `${simState.culletRatio}%`, x: 140, color: '#06b6d4' },
+      ];
+
+      silos.forEach(s => {
+        // Silo Cylinder
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, s.x, 82, 28, 56, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Hopper Cone
+        ctx.beginPath();
+        ctx.moveTo(s.x, 138);
+        ctx.lineTo(s.x + 14, 156);
+        ctx.lineTo(s.x + 28, 138);
+        ctx.closePath();
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = 0.35;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Label
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(s.label, s.x + 14, 104);
+        ctx.fillStyle = s.color;
+        ctx.font = '9px "Noto Sans Thai", sans-serif';
+        ctx.fillText(s.sub, s.x + 14, 122);
+      });
+
+      // Intensive Pan Mixer Drum
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 48, 172, 104, 48, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Rotating Mixer Paddles
+      const angle = simState.time * 4;
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i < 3; i++) {
+        const px = 72 + i * 28 + Math.sin(angle + i) * 7;
+        ctx.beginPath();
+        ctx.moveTo(px, 178);
+        ctx.lineTo(px, 214);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 10px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('INTENSIVE MIXER', 100, 233);
+
+      // Screw Batch Charger pushing batch into Furnace
+      ctx.fillStyle = '#334155';
+      roundRect(ctx, 135, 244, 72, 18, 4);
+      ctx.fill();
+      // Animated Screw Threads
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      const screwShift = (simState.time * 25) % 12;
+      for (let sx = 142 + screwShift; sx < 200; sx += 12) {
+        ctx.beginPath();
+        ctx.moveTo(sx, 246);
+        ctx.lineTo(sx - 5, 260);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '9px "Noto Sans Thai", sans-serif';
+      ctx.fillText('Batch Charger', 165, 276);
+
+      ctx.restore();
+    }
+
+    /**
+     * STATION 2: MELTING FURNACE & FOREHEARTH
+     */
+    function drawStation2_FurnaceAndForehearth() {
+      ctx.save();
+
+      // Refractory Brick Outer Shell
+      ctx.fillStyle = '#1e1b18';
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 3;
+      roundRect(ctx, 212, 132, 220, 158, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Crown Arch (Refractory Roof)
+      ctx.beginPath();
+      ctx.moveTo(215, 155);
+      ctx.quadraticCurveTo(322, 112, 429, 155);
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Molten Glass Color Gradient based on Effective Furnace Temp
+      const tempNorm = Math.max(0, Math.min(1, (simState.effectiveTemp - 1400) / 200));
+      const glassGrad = ctx.createLinearGradient(220, 210, 425, 280);
+      if (tempNorm > 0.6) {
+        glassGrad.addColorStop(0, '#ff4500');
+        glassGrad.addColorStop(0.5, '#ff8c00');
+        glassGrad.addColorStop(1, '#fbbf24');
+      } else if (tempNorm > 0.3) {
+        glassGrad.addColorStop(0, '#dc2626');
+        glassGrad.addColorStop(0.6, '#ea580c');
+        glassGrad.addColorStop(1, '#f59e0b');
+      } else {
+        glassGrad.addColorStop(0, '#991b1b');
+        glassGrad.addColorStop(1, '#c2410c');
+      }
+
+      // Molten Glass Bath
+      ctx.fillStyle = glassGrad;
+      roundRect(ctx, 220, 212, 204, 70, 6);
+      ctx.fill();
+
+      // Zone Divider Label (Melting vs Refining)
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(315, 150);
+      ctx.lineTo(315, 280);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('MELTING', 268, 205);
+      ctx.fillText('REFINING', 368, 205);
+
+      // Regenerative Burners (Alternating Left / Right Flames!)
+      const flameFlicker = 1 + Math.sin(simState.time * 24) * 0.14;
+      if (simState.burnerSide === 'left') {
+        drawBurnerFlame(224, 175, 1, flameFlicker);
+      } else {
+        drawBurnerFlame(420, 175, -1, flameFlicker);
+      }
+
+      // Refining Gas Bubbles Rising
+      simState.bubbles.forEach(b => {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // Digital Temperature Readout on Furnace Wall
+      ctx.fillStyle = '#090d16';
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, 272, 146, 100, 24, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#fb923c';
+      ctx.font = 'bold 12px "JetBrains Mono", sans-serif';
+      ctx.fillText(`${Math.round(simState.effectiveTemp)} °C`, 322, 162);
+
+      // Forehearth Conditioning Channel extending to Station 3
+      ctx.fillStyle = '#292524';
+      ctx.strokeStyle = '#9a3412';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 424, 212, 65, 26, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      // Molten stream inside Forehearth
+      ctx.fillStyle = '#f97316';
+      roundRect(ctx, 424, 218, 62, 14, 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '9px "JetBrains Mono", sans-serif';
+      ctx.fillText('Forehearth', 456, 204);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText('~1,150°C', 456, 250);
+
+      ctx.restore();
+    }
+
+    function drawBurnerFlame(x, y, dir, scale) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(dir * scale, scale);
+      const grad = ctx.createLinearGradient(0, 0, 58, 0);
+      grad.addColorStop(0, '#38bdf8');
+      grad.addColorStop(0.3, '#fbbf24');
+      grad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.quadraticCurveTo(32, -14, 62, 0);
+      ctx.quadraticCurveTo(32, 14, 0, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    /**
+     * STATION 3: GOB FEEDER & SHEARS
+     */
+    function drawStation3_GobFeeder() {
+      ctx.save();
+
+      // Feeder Bowl Housing
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 488, 198, 36, 42, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Reciprocating Plunger synced to gobTimer
+      const cycle = (simState.gobTimer / (34 / simState.gobSpeed)) * Math.PI * 2;
+      const plungerOffset = Math.sin(cycle) * 10;
+
+      ctx.fillStyle = '#94a3b8';
+      roundRect(ctx, 501, 152 + plungerOffset, 10, 52, 3);
+      ctx.fill();
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '9px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Plunger', 506, 145);
+
+      // Mechanical Shear Blades (Snipping motion when cycle nears 2*PI)
+      const shearClose = Math.max(0, Math.sin(cycle - Math.PI * 1.2)) * 8;
+      ctx.fillStyle = '#e2e8f0';
+      // Left blade
+      ctx.beginPath();
+      ctx.moveTo(484 + shearClose, 244);
+      ctx.lineTo(502 + shearClose, 248);
+      ctx.lineTo(484 + shearClose, 252);
+      ctx.closePath();
+      ctx.fill();
+      // Right blade
+      ctx.beginPath();
+      ctx.moveTo(528 - shearClose, 244);
+      ctx.lineTo(510 - shearClose, 248);
+      ctx.lineTo(528 - shearClose, 252);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '9px "JetBrains Mono", sans-serif';
+      ctx.fillText('Shears', 548, 251);
+
+      // Delivery Chute into Forming Machine
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(506, 256);
+      ctx.quadraticCurveTo(512, 305, 610, 295);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    /**
+     * Draw Falling Glowing Gobs along Delivery Chute
+     */
+    function drawFallingGobs() {
+      ctx.save();
+      simState.gobs.forEach(g => {
+        const t = g.progress;
+        // Quadratic Bezier interpolation along chute
+        const x = (1 - t) * (1 - t) * 506 + 2 * (1 - t) * t * 512 + t * t * 615;
+        const y = (1 - t) * (1 - t) * 246 + 2 * (1 - t) * t * 302 + t * t * 265;
+
+        ctx.fillStyle = '#ff6b00';
+        ctx.shadowColor = '#f97316';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 6, 11, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    /**
+     * STATION 4: FORMING MACHINE (H-28 Paste Mold / Rotary Press / IS Machine)
+     */
+    function drawStation4_FormingMachine() {
+      ctx.save();
+
+      // Machine Frame
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = simState.faults.coolingAir ? '#ef4444' : '#334155';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 600, 142, 155, 165, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Mold Cavity Glow (Turns red-hot if Cooling Air Drop fault is active!)
+      const moldHeatColor = simState.faults.coolingAir ? '#ef4444' : '#475569';
+      const pulseY = Math.sin(simState.time * 6) * 8;
+
+      if (simState.formingMode === 'h28') {
+        // H-28 Paste Mold + Fire Polishing Torch
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = moldHeatColor;
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, 622, 215, 42, 46, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // Spinning glass parison inside paste mold
+        ctx.fillStyle = '#fb923c';
+        roundRect(ctx, 632, 222, 22, 34, 4);
+        ctx.fill();
+
+        // Fire Polishing Burner Torch at exit
+        ctx.fillStyle = '#64748b';
+        roundRect(ctx, 704, 168, 12, 28, 3);
+        ctx.fill();
+        // Blue/Orange Rim Flame
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(706, 196);
+        ctx.lineTo(710, 222 + Math.sin(simState.time * 30) * 3);
+        ctx.lineTo(714, 196);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FIRE POLISH', 712, 160);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText('Paste Mold', 643, 276);
+
+      } else if (simState.formingMode === 'press') {
+        // Rotary Press Machine (Hydraulic Plunger pressing into mold)
+        ctx.fillStyle = '#334155';
+        roundRect(ctx, 635, 154, 34, 24, 4);
+        ctx.fill();
+
+        // Pressing Plunger Piston
+        ctx.fillStyle = '#f97316';
+        roundRect(ctx, 646, 178 + pulseY, 12, 38, 3);
+        ctx.fill();
+
+        // Heavy Press Mold
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = moldHeatColor;
+        ctx.lineWidth = 3;
+        roundRect(ctx, 628, 222, 48, 40, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fb923c';
+        roundRect(ctx, 636, 230, 32, 26, 3);
+        ctx.fill();
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('PRESS PLUNGER', 678, 165);
+        ctx.fillText('Rotary Table', 652, 276);
+
+      } else {
+        // IS Machine (2-Stage Blank Mold -> Blow Mold)
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = moldHeatColor;
+        ctx.lineWidth = 2;
+        // Blank Mold
+        roundRect(ctx, 616, 212, 34, 48, 5);
+        ctx.fill();
+        ctx.stroke();
+        // Blow Mold
+        roundRect(ctx, 668, 212, 38, 48, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        // Compressed Air Blow Nozzle
+        ctx.fillStyle = '#06b6d4';
+        roundRect(ctx, 682, 180 + pulseY * 0.5, 10, 30, 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#fb923c';
+        roundRect(ctx, 625, 222, 16, 32, 6);
+        ctx.fill();
+        roundRect(ctx, 676, 218, 22, 38, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BLANK → BLOW', 662, 165);
+        ctx.fillText('IS Section', 662, 276);
+      }
+
+      // Cooling Air Status Indicator on Machine
+      ctx.fillStyle = simState.faults.coolingAir ? '#ef4444' : '#22d3ee';
+      ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        simState.faults.coolingAir ? '⚠ COOLING AIR 35%' : '❄ COOLING AIR OK',
+        677,
+        296
+      );
+
+      ctx.restore();
+    }
+
+    /**
+     * STATION 5: ANNEALING LEHR TUNNEL
+     */
+    function drawStation5_AnnealingLehr() {
+      ctx.save();
+
+      // Tunnel Body
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 785, 172, 220, 96, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Internal Thermal Gradient Banner (550°C Molten Orange -> 65°C Cool Cyan)
+      const lehrGrad = ctx.createLinearGradient(792, 0, 998, 0);
+      lehrGrad.addColorStop(0, 'rgba(249, 115, 22, 0.45)');
+      if (simState.annealingRate === 'fast') {
+        // Drops temperature too abruptly!
+        lehrGrad.addColorStop(0.32, 'rgba(6, 182, 212, 0.35)');
+        lehrGrad.addColorStop(1, 'rgba(6, 182, 212, 0.25)');
+      } else if (simState.annealingRate === 'slow') {
+        lehrGrad.addColorStop(0.75, 'rgba(245, 158, 11, 0.35)');
+        lehrGrad.addColorStop(1, 'rgba(6, 182, 212, 0.25)');
+      } else {
+        lehrGrad.addColorStop(0.55, 'rgba(245, 158, 11, 0.3)');
+        lehrGrad.addColorStop(1, 'rgba(6, 182, 212, 0.25)');
+      }
+      ctx.fillStyle = lehrGrad;
+      roundRect(ctx, 792, 195, 206, 62, 4);
+      ctx.fill();
+
+      // Recirculation Fans on Tunnel Roof
+      for (let fx = 820; fx <= 970; fx += 50) {
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(fx, 165, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Spinning Fan Blades
+        const fAngle = simState.time * 8 + fx;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(fx + Math.cos(fAngle) * 7, 165 + Math.sin(fAngle) * 7);
+        ctx.lineTo(fx - Math.cos(fAngle) * 7, 165 - Math.sin(fAngle) * 7);
+        ctx.stroke();
+      }
+
+      // Zone Temperature Labels
+      ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+      ctx.fillStyle = '#fb923c';
+      ctx.textAlign = 'left';
+      ctx.fillText('550°C', 796, 188);
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'center';
+      ctx.fillText('ANNEALING LEHR', 895, 188);
+
+      ctx.fillStyle = '#22d3ee';
+      ctx.textAlign = 'right';
+      ctx.fillText('65°C', 994, 188);
+
+      ctx.restore();
+    }
+
+    /**
+     * STATION 6: HOT-END & COLD-END SURFACE COATING
+     */
+    function drawStation6_SurfaceCoating() {
+      ctx.save();
+
+      // Hot-End Coating Hood
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, 1032, 185, 46, 34, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Cold-End Coating Sprayer
+      ctx.strokeStyle = '#06b6d4';
+      roundRect(ctx, 1102, 185, 46, 34, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Spray Mist Particles
+      const mistPulse = 0.35 + Math.sin(simState.time * 10) * 0.2;
+      ctx.fillStyle = `rgba(251, 191, 36, ${mistPulse})`;
+      ctx.beginPath();
+      ctx.moveTo(1055, 219);
+      ctx.lineTo(1040, 258);
+      ctx.lineTo(1070, 258);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = `rgba(34, 211, 238, ${mistPulse})`;
+      ctx.beginPath();
+      ctx.moveTo(1125, 219);
+      ctx.lineTo(1110, 258);
+      ctx.lineTo(1140, 258);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = 'bold 8.5px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText('HOT COAT', 1055, 178);
+      ctx.fillText('SnCl₄', 1055, 205);
+
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillText('COLD COAT', 1125, 178);
+      ctx.fillText('PE/WAX', 1125, 205);
+
+      ctx.restore();
+    }
+
+    /**
+     * STATION 7: COLD-END QC SCANNER, PACKAGING & CULLET CRUSHER
+     */
+    function drawStation7_QCAndPackaging() {
+      ctx.save();
+
+      // Optical / Laser Inspection Arch
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 1192, 165, 56, 44, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('LASER QC', 1220, 184);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '8px "JetBrains Mono", sans-serif';
+      ctx.fillText('100% SCAN', 1220, 198);
+
+      // Scanning Laser Beams
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.55)';
+      ctx.lineWidth = 1.5;
+      const scanShift = Math.sin(simState.time * 14) * 10;
+      ctx.beginPath();
+      ctx.moveTo(1220, 209);
+      ctx.lineTo(1220 + scanShift, 258);
+      ctx.stroke();
+
+      // Reject Chute & Cullet Crusher below QC Scanner
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(1235, 272);
+      ctx.lineTo(1235, 325);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Cullet Crusher Box
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 1196, 326, 78, 46, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Crusher Counter-Rotating Rollers
+      const rAngle = simState.time * 6;
+      [1220, 1250].forEach((rx, idx) => {
+        ctx.strokeStyle = '#fb7185';
+        ctx.beginPath();
+        ctx.arc(rx, 346, 9, 0, Math.PI * 2);
+        ctx.stroke();
+        const dir = idx === 0 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(rx + Math.cos(rAngle * dir) * 9, 346 + Math.sin(rAngle * dir) * 9);
+        ctx.lineTo(rx - Math.cos(rAngle * dir) * 9, 346 - Math.sin(rAngle * dir) * 9);
+        ctx.stroke();
+      });
+
+      ctx.fillStyle = '#fda4af';
+      ctx.font = 'bold 8.5px "JetBrains Mono", sans-serif';
+      ctx.fillText('CULLET CRUSHER', 1235, 367);
+
+      // Case Packer & Palletizer at End of Line (x = 1310..1372)
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      roundRect(ctx, 1310, 215, 62, 65, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Stacked Packed Boxes inside Palletizer
+      ctx.fillStyle = '#d97706';
+      roundRect(ctx, 1318, 254, 20, 16, 2);
+      ctx.fill();
+      roundRect(ctx, 1342, 254, 20, 16, 2);
+      ctx.fill();
+      roundRect(ctx, 1328, 235, 24, 16, 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#7dd3fc';
+      ctx.font = 'bold 8.5px "JetBrains Mono", sans-serif';
+      ctx.fillText('PACK & PALLET', 1341, 207);
+      ctx.fillStyle = '#34d399';
+      ctx.fillText(`BOXES: ${simState.packedBoxes}`, 1341, 294);
+
+      ctx.restore();
+    }
+
+    /**
+     * Draw Moving Glassware Products on Conveyor (with Thermal Color Transition & Defect Markers)
+     */
+    function drawWareItems() {
+      ctx.save();
+      simState.wareItems.forEach(item => {
+        const x = item.x;
+        const y = item.y + item.rejectY;
+
+        // Thermal Color Transition across Lehr (x = 785 -> 1005)
+        let fillCol = '#38bdf8';
+        let strokeCol = '#bae6fd';
+        if (x < 785) {
+          fillCol = 'rgba(251, 146, 60, 0.85)';
+          strokeCol = '#fed7aa';
+        } else if (x < 1005) {
+          const t = (x - 785) / 220;
+          if (t < 0.45) {
+            fillCol = 'rgba(249, 115, 22, 0.7)';
+            strokeCol = '#fdba74';
+          } else {
+            fillCol = 'rgba(56, 189, 248, 0.55)';
+            strokeCol = '#bae6fd';
+          }
+        } else {
+          fillCol = item.rejected ? 'rgba(244, 63, 94, 0.75)' : 'rgba(56, 189, 248, 0.45)';
+          strokeCol = item.rejected ? '#fda4af' : '#e0f2fe';
+        }
+
+        ctx.fillStyle = fillCol;
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = 1.5;
+
+        // Draw distinct silhouette based on Forming Mode & Deform status
+        ctx.beginPath();
+        if (item.defect === 'DEFORMED') {
+          // Warped tilted glass silhouette
+          ctx.moveTo(x - 7, y);
+          ctx.lineTo(x - 3, y - 22);
+          ctx.lineTo(x + 10, y - 20);
+          ctx.lineTo(x + 6, y);
+          ctx.closePath();
+        } else if (item.shape === 'h28') {
+          // Tall thin tumbler / stemless wine glass
+          ctx.moveTo(x - 6, y);
+          ctx.lineTo(x - 7, y - 24);
+          ctx.lineTo(x + 7, y - 24);
+          ctx.lineTo(x + 6, y);
+          ctx.closePath();
+        } else if (item.shape === 'press') {
+          // Wide heavy-base bowl / tumbler
+          ctx.moveTo(x - 8, y);
+          ctx.lineTo(x - 10, y - 16);
+          ctx.lineTo(x + 10, y - 16);
+          ctx.lineTo(x + 8, y);
+          ctx.closePath();
+        } else {
+          // Bottle silhouette (IS Machine)
+          ctx.moveTo(x - 6, y);
+          ctx.lineTo(x - 6, y - 15);
+          ctx.lineTo(x - 3, y - 20);
+          ctx.lineTo(x - 3, y - 27);
+          ctx.lineTo(x + 3, y - 27);
+          ctx.lineTo(x + 3, y - 20);
+          ctx.lineTo(x + 6, y - 15);
+          ctx.lineTo(x + 6, y);
+          ctx.closePath();
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw Defect Visual Indicator (Blister dot or Stress Crack line)
+        if (item.defect === 'BLISTER') {
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(x, y - 11, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (item.defect === 'CRACK') {
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x - 3, y - 16);
+          ctx.lineTo(x + 2, y - 10);
+          ctx.lineTo(x - 2, y - 4);
+          ctx.stroke();
+        }
+
+        // Reject Tag Badge when kicked out at QC
+        if (item.rejected) {
+          ctx.fillStyle = '#e11d48';
+          ctx.font = 'bold 8px "JetBrains Mono", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(item.defect, x, y - 30);
+        }
+      });
+      ctx.restore();
+    }
+
+    /**
+     * Draw Station Header Badges & Active Selection / Guided Tour Focus Frame
+     */
+    function drawStationOverlays() {
+      ctx.save();
+      STATIONS_DATA.forEach((st, idx) => {
+        const isSelected = simState.selectedStation === idx;
+
+        // Dim non-selected stations slightly during Guided Tour
+        if (simState.guidedTourActive && !isSelected) {
+          ctx.fillStyle = 'rgba(7, 11, 20, 0.55)';
+          roundRect(ctx, st.x, 42, st.w, 336, 10);
+          ctx.fill();
+        }
+
+        // Station Top Header Pill
+        ctx.fillStyle = isSelected ? '#ea580c' : '#1e293b';
+        ctx.strokeStyle = isSelected ? '#fdba74' : '#334155';
+        ctx.lineWidth = isSelected ? 2 : 1;
+        roundRect(ctx, st.x + 4, 46, st.w - 8, 24, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isSelected ? '#ffffff' : '#cbd5e1';
+        ctx.font = 'bold 10.5px "Noto Sans Thai", "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(st.shortName, st.x + st.w / 2, 62);
+
+        // Glowing Selection Outline
+        if (isSelected) {
+          ctx.strokeStyle = simState.guidedTourActive ? '#22d3ee' : 'rgba(249, 115, 22, 0.75)';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([6, 4]);
+          roundRect(ctx, st.x, 42, st.w, 336, 10);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+      ctx.restore();
+    }
+
+    /**
+     * =========================================================================
+     * 7. SECONDARY DIAGNOSTIC CHARTS (ANNEALING CURVE & POLARISCOPE VIEW)
+     * =========================================================================
+     */
+    function renderAnnealingChart() {
+      const w = annealingCanvas.width;
+      const h = annealingCanvas.height;
+      actx.save();
+      actx.clearRect(0, 0, w, h);
+
+      const padL = 44 * (w / 420);
+      const padR = 16 * (w / 420);
+      const padT = 18 * (h / 175);
+      const padB = 26 * (h / 175);
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      // Grid & Critical Threshold Lines (Annealing Point 550°C, Strain Point 500°C)
+      const tempToY = (t) => padT + plotH * (1 - (t - 0) / 650);
+
+      // Annealing & Strain Band
+      const y550 = tempToY(550);
+      const y500 = tempToY(500);
+      actx.fillStyle = 'rgba(249, 115, 22, 0.12)';
+      actx.fillRect(padL, y550, plotW, y500 - y550);
+
+      actx.strokeStyle = 'rgba(249, 115, 22, 0.5)';
+      actx.setLineDash([4, 4]);
+      actx.lineWidth = 1;
+      actx.beginPath();
+      actx.moveTo(padL, y550);
+      actx.lineTo(padL + plotW, y550);
+      actx.stroke();
+
+      actx.strokeStyle = 'rgba(6, 182, 212, 0.5)';
+      actx.beginPath();
+      actx.moveTo(padL, y500);
+      actx.lineTo(padL + plotW, y500);
+      actx.stroke();
+      actx.setLineDash([]);
+
+      // Y-Axis Labels
+      actx.fillStyle = '#94a3b8';
+      actx.font = `${Math.max(10, Math.round(10 * (w / 420)))}px "JetBrains Mono", sans-serif`;
+      actx.textAlign = 'right';
+      actx.fillText('550°C', padL - 6, y550 + 3);
+      actx.fillText('500°C', padL - 6, y500 + 3);
+      actx.fillText('65°C', padL - 6, tempToY(65) + 3);
+
+      // Ideal Reference Curve (Dashed Gray)
+      actx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      actx.lineWidth = 2;
+      actx.setLineDash([5, 5]);
+      actx.beginPath();
+      actx.moveTo(padL, tempToY(580));
+      actx.lineTo(padL + plotW * 0.25, tempToY(550)); // Equalize
+      actx.lineTo(padL + plotW * 0.55, tempToY(500)); // Slow cool through strain point
+      actx.lineTo(padL + plotW, tempToY(65));         // Controlled fast cool to exit
+      actx.stroke();
+      actx.setLineDash([]);
+
+      // Active Live Curve based on selected Annealing Rate
+      const curveGrad = actx.createLinearGradient(padL, 0, padL + plotW, 0);
+      curveGrad.addColorStop(0, '#f97316');
+      curveGrad.addColorStop(0.5, '#fbbf24');
+      curveGrad.addColorStop(1, '#06b6d4');
+
+      actx.strokeStyle = simState.annealingRate === 'fast' ? '#f43f5e' : curveGrad;
+      actx.lineWidth = 3;
+      actx.beginPath();
+      actx.moveTo(padL, tempToY(580));
+
+      if (simState.annealingRate === 'standard') {
+        actx.lineTo(padL + plotW * 0.25, tempToY(550));
+        actx.lineTo(padL + plotW * 0.55, tempToY(500));
+        actx.lineTo(padL + plotW, tempToY(65));
+      } else if (simState.annealingRate === 'slow') {
+        actx.lineTo(padL + plotW * 0.35, tempToY(552));
+        actx.lineTo(padL + plotW * 0.72, tempToY(498));
+        actx.lineTo(padL + plotW, tempToY(85));
+      } else {
+        // Fast cooling drops sharply through 550->500°C causing severe thermal gradient!
+        actx.lineTo(padL + plotW * 0.12, tempToY(530));
+        actx.lineTo(padL + plotW * 0.28, tempToY(240));
+        actx.lineTo(padL + plotW, tempToY(55));
+      }
+      actx.stroke();
+
+      // Zone X-Axis Labels
+      actx.fillStyle = '#64748b';
+      actx.textAlign = 'center';
+      actx.fillText('Zone 1 (Heat)', padL + plotW * 0.18, h - 6);
+      actx.fillText('Zone 2 (Anneal)', padL + plotW * 0.5, h - 6);
+      actx.fillText('Zone 3 (Cool)', padL + plotW * 0.84, h - 6);
+
+      actx.restore();
+    }
+
+    /**
+     * Render Photoelastic Polariscope Stress View (Shows rainbow interference fringes when stress is high)
+     */
+    function renderPolariscopeView() {
+      const w = polariscopeCanvas.width;
+      const h = polariscopeCanvas.height;
+      pctx.save();
+      pctx.clearRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+      const scale = Math.min(w, h) / 180;
+
+      // Polarized dark-purple background field
+      pctx.fillStyle = '#090d1a';
+      pctx.fillRect(0, 0, w, h);
+
+      // Crosshair Reticle
+      pctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+      pctx.lineWidth = 1;
+      pctx.beginPath();
+      pctx.moveTo(cx, 12);
+      pctx.lineTo(cx, h - 12);
+      pctx.moveTo(12, cy);
+      pctx.lineTo(w - 12, cy);
+      pctx.stroke();
+
+      // Glass Cross-Section Silhouette under Polarized Light
+      pctx.save();
+      pctx.translate(cx, cy);
+      pctx.scale(scale, scale);
+
+      // Glass outer wall
+      pctx.beginPath();
+      pctx.moveTo(-36, -52);
+      pctx.lineTo(-30, 48);
+      pctx.lineTo(30, 48);
+      pctx.lineTo(36, -52);
+      pctx.closePath();
+
+      if (simState.thermalStressNm > 50) {
+        // High Stress: Vivid Photoelastic Birefringence Bands (Magenta / Yellow / Cyan)
+        const stressGrad = pctx.createLinearGradient(-36, -50, 36, 48);
+        stressGrad.addColorStop(0, 'rgba(236, 72, 153, 0.85)');
+        stressGrad.addColorStop(0.25, 'rgba(250, 204, 21, 0.85)');
+        stressGrad.addColorStop(0.5, 'rgba(6, 182, 212, 0.85)');
+        stressGrad.addColorStop(0.75, 'rgba(244, 63, 94, 0.85)');
+        stressGrad.addColorStop(1, 'rgba(168, 85, 247, 0.85)');
+        pctx.fillStyle = stressGrad;
+        pctx.fill();
+
+        // Stress Isochromatic Fringes along base & rim
+        pctx.strokeStyle = '#fde047';
+        pctx.lineWidth = 3;
+        pctx.strokeRect(-26, 32, 52, 12);
+      } else {
+        // Low Stress: Uniform neutral blue-violet polarized tint
+        const calmGrad = pctx.createLinearGradient(0, -50, 0, 48);
+        calmGrad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+        calmGrad.addColorStop(1, 'rgba(99, 102, 241, 0.35)');
+        pctx.fillStyle = calmGrad;
+        pctx.fill();
+      }
+
+      pctx.strokeStyle = '#94a3b8';
+      pctx.lineWidth = 2;
+      pctx.stroke();
+      pctx.restore();
+
+      // Overlay Telemetry Readout
+      pctx.fillStyle = simState.thermalStressNm > 50 ? '#fda4af' : '#67e8f9';
+      pctx.font = `bold ${Math.max(10, Math.round(11 * scale))}px "JetBrains Mono", sans-serif`;
+      pctx.textAlign = 'left';
+      pctx.fillText(`RETARDATION: ${simState.thermalStressNm} nm/cm`, 10, h - 10);
+
+      pctx.restore();
+    }
+
+    /**
+     * Utility: Rounded Rectangle Path Helper
+     */
+    function roundRect(context, x, y, w, h, r) {
+      context.beginPath();
+      context.moveTo(x + r, y);
+      context.arcTo(x + w, y, x + w, y + h, r);
+      context.arcTo(x + w, y + h, x, y + h, r);
+      context.arcTo(x, y + h, x, y, r);
+      context.arcTo(x, y, x + w, y, r);
+      context.closePath();
+    }
+
+    /**
+     * =========================================================================
+     * 8. MAIN REQUESTANIMATIONFRAME LOOP
+     * =========================================================================
+     */
+    function animationLoop(timestamp) {
+      if (!simState.lastTimestamp) simState.lastTimestamp = timestamp;
+      const dt = Math.min(0.05, (timestamp - simState.lastTimestamp) / 1000);
+      simState.lastTimestamp = timestamp;
+
+      if (simState.isPlaying) {
+        updateEntities(dt);
+      }
+
+      renderProcessCanvas();
+      renderAnnealingChart();
+      renderPolariscopeView();
+
+      requestAnimationFrame(animationLoop);
+    }
+
+    // Boot Simulator on Window Load
+    window.addEventListener('load', initSimulation);
+  </script>
+</body>
+</html>

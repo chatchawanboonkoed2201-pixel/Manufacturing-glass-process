@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans Thai", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Noto Sans Thai", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    background-color: #070b14;
+    color: #e2e8f0;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+}
+
+.scada-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(30, 41, 59, 0.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.35) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+input[type="range"].scada-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: #1e293b;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].scada-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f97316;
+  border: 2px solid #fff7ed;
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.55);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"].scada-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"].scada-slider.cyan-slider::-webkit-slider-thumb {
+  background: #06b6d4;
+  border-color: #ecfeff;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.55);
+}
+
+input[type="range"].scada-slider:focus-visible {
+  outline: 2px solid #f97316;
+  outline-offset: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #283858;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b5280;
+}

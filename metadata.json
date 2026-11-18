@@ -1,0 +1,6 @@
+{
+  "name": "GlassLine Academy — ระบบเรียนรู้สายการผลิตแก้วอุตสาหกรรม",
+  "description": "แพลตฟอร์มการเรียนรู้และห้องปฏิบัติการจำลอง Digital Twin & SCADA สำหรับวิศวกรรมกระบวนการผลิตแก้วโซดาไลม์ ครบ 7 สถานี พร้อมบทเรียน ภารกิจแก้ปัญหา และแบบทดสอบ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
